@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Particles – Pinch Zoom</title>
+  <title>Particles – Limited Zoom</title>
   <style>
     body { 
       margin: 0; 
@@ -30,11 +30,14 @@
       font-size: 12px;
       opacity: 0.7;
       pointer-events: none;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 10px;
     }
   </style>
 </head>
 <body>
-<div id="zoomInfo">Pinch to zoom</div>
+<div id="zoomInfo">Standard size</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
@@ -45,10 +48,12 @@ let mouse = new THREE.Vector3();
 let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 let particleCount, pointSize;
 
-// Zoom variables
+// Zoom variables - FIXED STANDARD SIZE
 let cameraDistance = 3.0;
-let minZoom = 1.5;
-let maxZoom = 6.0;
+const STANDARD_SIZE = 3.0;  // Fixed standard size (can't go below this)
+const MAX_ZOOM_IN = 1.5;    // Can zoom IN to 1.5 (larger cube)
+const MAX_ZOOM_OUT = 4.0;   // Can zoom OUT to 4.0 (smaller cube)
+
 let initialPinchDistance = 0;
 let isPinching = false;
 let zoomInfo;
@@ -150,12 +155,22 @@ function init() {
         uniforms.uMouse.value.copy(mouse);
     }
 
-    // Mouse wheel zoom for desktop
+    // Mouse wheel zoom for desktop - WITH LIMITS
     window.addEventListener("wheel", (e) => {
         e.preventDefault();
         const zoomSpeed = 0.001;
-        cameraDistance += e.deltaY * zoomSpeed;
-        cameraDistance = Math.max(minZoom, Math.min(maxZoom, cameraDistance));
+        let newDistance = cameraDistance + e.deltaY * zoomSpeed;
+        
+        // Apply limits
+        if (e.deltaY < 0) {
+            // Zoom IN (make larger) - allowed to MAX_ZOOM_IN
+            newDistance = Math.max(MAX_ZOOM_IN, Math.min(STANDARD_SIZE, newDistance));
+        } else {
+            // Zoom OUT (make smaller) - limited, can't go too small
+            newDistance = Math.max(STANDARD_SIZE, Math.min(MAX_ZOOM_OUT, newDistance));
+        }
+        
+        cameraDistance = newDistance;
         camera.position.z = cameraDistance;
         updateZoomInfo();
     }, { passive: false });
@@ -185,13 +200,25 @@ function init() {
         if (touches.length === 2 && isPinching) {
             // Pinch zoom in progress
             const currentDistance = getPinchDistance(touches[0], touches[1]);
-            const zoomFactor = initialPinchDistance / currentDistance;
+            const pinchChange = currentDistance - initialPinchDistance;
             
-            // Adjust camera distance based on pinch
-            cameraDistance *= zoomFactor;
-            cameraDistance = Math.max(minZoom, Math.min(maxZoom, cameraDistance));
+            // Calculate zoom based on pinch direction
+            let newDistance = cameraDistance;
+            
+            if (pinchChange > 0) {
+                // Fingers moving apart = ZOOM OUT (make smaller)
+                // BUT LIMITED - can't go below STANDARD_SIZE
+                newDistance = cameraDistance + (pinchChange * 0.01);
+                newDistance = Math.max(STANDARD_SIZE, Math.min(MAX_ZOOM_OUT, newDistance));
+            } else if (pinchChange < 0) {
+                // Fingers moving together = ZOOM IN (make larger)
+                // Allowed to go closer
+                newDistance = cameraDistance + (pinchChange * 0.01);
+                newDistance = Math.max(MAX_ZOOM_IN, Math.min(STANDARD_SIZE, newDistance));
+            }
+            
+            cameraDistance = newDistance;
             camera.position.z = cameraDistance;
-            
             initialPinchDistance = currentDistance;
             updateZoomInfo();
         } else if (touches.length === 1) {
@@ -206,7 +233,7 @@ function init() {
         
         if (touches.length < 2) {
             isPinching = false;
-            zoomInfo.textContent = "Pinch to zoom";
+            updateZoomInfo();
         }
     }
     
@@ -227,6 +254,30 @@ function init() {
         updatePointerPosition(e.clientX, e.clientY);
     });
 
+    // Reset to standard size with double tap
+    window.addEventListener("dblclick", () => {
+        cameraDistance = STANDARD_SIZE;
+        camera.position.z = cameraDistance;
+        updateZoomInfo();
+    });
+    
+    // Double tap on mobile
+    let lastTap = 0;
+    window.addEventListener("touchend", (e) => {
+        if (e.touches.length === 0) {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+            
+            if (tapLength < 300 && tapLength > 0) {
+                // Double tap detected
+                cameraDistance = STANDARD_SIZE;
+                camera.position.z = cameraDistance;
+                updateZoomInfo();
+            }
+            lastTap = currentTime;
+        }
+    });
+
     // Handle window resize
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('orientationchange', function() {
@@ -235,8 +286,15 @@ function init() {
 }
 
 function updateZoomInfo() {
-    const zoomPercent = Math.round(((cameraDistance - minZoom) / (maxZoom - minZoom)) * 100);
-    zoomInfo.textContent = `Zoom: ${zoomPercent}%`;
+    if (Math.abs(cameraDistance - STANDARD_SIZE) < 0.05) {
+        zoomInfo.textContent = "Standard size ✓";
+    } else if (cameraDistance < STANDARD_SIZE) {
+        const zoomPercent = Math.round(((STANDARD_SIZE - cameraDistance) / (STANDARD_SIZE - MAX_ZOOM_IN)) * 100);
+        zoomInfo.textContent = `Zoom in: ${zoomPercent}%`;
+    } else {
+        const zoomPercent = Math.round(((cameraDistance - STANDARD_SIZE) / (MAX_ZOOM_OUT - STANDARD_SIZE)) * 100);
+        zoomInfo.textContent = `Zoom out: ${zoomPercent}%`;
+    }
 }
 
 function onWindowResize() {
