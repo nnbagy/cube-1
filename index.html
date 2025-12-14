@@ -99,20 +99,22 @@ function init() {
                 // Current position
                 vec3 pos = position;
                 
-                // Calculate collapse effect - NOW 100% COLLAPSE
+                // Calculate collapse effect
                 float collapseFactor = uCollapseProgress * speed;
                 
-                // Collapse effect: particles move COMPLETELY to center (100%)
-                // When collapseFactor = 1.0, pos = vec3(0,0,0)
+                // Move particles toward center
+                vec3 directionToCenter = -normalize(originalPosition);
+                float distanceToCenter = length(originalPosition);
+                
+                // Collapse effect: particles move to center
                 pos = originalPosition * (1.0 - collapseFactor);
                 
                 // Add slight random offset for natural look
                 float randomOffset = sin(uTime * 2.0 + float(gl_VertexID) * 0.1) * 0.05 * collapseFactor;
-                vec3 directionToCenter = -normalize(originalPosition);
                 pos += directionToCenter * randomOffset;
                 
-                // Point size - becomes smaller as it collapses
-                gl_PointSize = ${isMobile ? '1.8' : '2.2'} * (1.0 - collapseFactor * 0.8);
+                // Point size
+                gl_PointSize = ${isMobile ? '1.8' : '2.2'} * (1.0 - collapseFactor * 0.5);
                 gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
             }
         `,
@@ -166,7 +168,7 @@ function animate() {
             collapseProgress = 1.0;
             isCollapsing = false;
             
-            // After full collapse (100%), wait then expand back
+            // After full collapse, expand back
             setTimeout(() => {
                 isCollapsing = false;
                 setTimeout(() => {
