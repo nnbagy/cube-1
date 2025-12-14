@@ -32,7 +32,7 @@
 let scene, camera, renderer, sphere, uniforms;
 let mouse = new THREE.Vector3();
 let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-let particleCount, pointSize, spreadMultiplier;
+let particleCount, pointSize;
 
 init();
 animate();
@@ -40,10 +40,18 @@ animate();
 function init() {
     scene = new THREE.Scene();
 
-    // Adjust for mobile aspect ratio
+    // Adjust camera for mobile aspect ratios
     const aspectRatio = window.innerWidth / window.innerHeight;
     camera = new THREE.PerspectiveCamera(60, aspectRatio, 0.1, 1000);
-    camera.position.z = isMobile ? 3.0 : 3; // Closer for wider view
+    
+    // Adjust camera distance based on aspect ratio to keep cube shape
+    if (aspectRatio > 1) {
+        // Landscape - move camera closer to see full width
+        camera.position.z = 2.8;
+    } else {
+        // Portrait - normal distance
+        camera.position.z = isMobile ? 3.2 : 3;
+    }
 
     renderer = new THREE.WebGLRenderer({ 
         antialias: true,
@@ -58,19 +66,19 @@ function init() {
 
     // Adjust particle count and size for mobile
     particleCount = isMobile ? 15000 : 50000;
-    pointSize = isMobile ? 2.0 : 1.0;
-    
-    // WIDER SPREAD - increased from 2 to 3 for left-right spread
-    spreadMultiplier = isMobile ? 3.0 : 2.5; // Mobile gets even wider spread
+    pointSize = isMobile ? 2.5 : 1.0; // Larger on mobile for visibility
 
     const positions = new Float32Array(particleCount * 3);
 
-    // Create particles in a WIDER cube shape
+    // Create particles in a PERFECT CUBE shape
+    // Using the original spread of 2 units to maintain cube proportions
+    const cubeSize = 2.0; // Fixed cube size for perfect shape
+    
     for (let i = 0; i < particleCount; i++) {
-        // WIDER horizontal spread (X-axis), normal vertical (Y), normal depth (Z)
-        positions[i*3] = (Math.random() - 0.5) * spreadMultiplier;     // X: wider
-        positions[i*3+1] = (Math.random() - 0.5) * (spreadMultiplier * 0.7);  // Y: slightly less wide
-        positions[i*3+2] = (Math.random() - 0.5) * (spreadMultiplier * 0.8);  // Z: slightly less wide
+        // Perfect cube coordinates - all axes same size
+        positions[i*3] = (Math.random() - 0.5) * cubeSize;     // X
+        positions[i*3+1] = (Math.random() - 0.5) * cubeSize;   // Y  
+        positions[i*3+2] = (Math.random() - 0.5) * cubeSize;   // Z
     }
 
     const particleGeometry = new THREE.BufferGeometry();
@@ -93,8 +101,7 @@ function init() {
 
                 float dist = distance(pos, uMouse);
                 if (dist > 0.01) { // Avoid division by zero
-                    // Reduced interaction strength for wider spread
-                    pos += normalize(pos - uMouse) * (0.12 / dist);
+                    pos += normalize(pos - uMouse) * (0.15 / dist);
                 }
 
                 gl_PointSize = uPointSize;
@@ -126,8 +133,8 @@ function init() {
         const normalizedX = (x / window.innerWidth) * 2 - 1;
         const normalizedY = -(y / window.innerHeight) * 2 + 1;
         
-        // Adjust for wider spread - mouse position matches particle spread
-        mouse.set(normalizedX * (spreadMultiplier/2), normalizedY * (spreadMultiplier/2 * 0.7), 0.3);
+        // Map to cube coordinates (-1 to +1 cube space)
+        mouse.set(normalizedX, normalizedY, 0.3);
         uniforms.uMouse.value.copy(mouse);
     }
 
@@ -151,15 +158,27 @@ function init() {
         }
     }, { passive: false });
 
-    // Handle window resize
+    // Handle window resize - MAINTAIN CUBE PROPORTIONS
     window.addEventListener('resize', onWindowResize);
-    window.addEventListener('orientationchange', onWindowResize);
+    window.addEventListener('orientationchange', function() {
+        setTimeout(onWindowResize, 100); // Wait for orientation to complete
+    });
 }
 
 function onWindowResize() {
     // Update camera aspect ratio
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const aspectRatio = window.innerWidth / window.innerHeight;
+    camera.aspect = aspectRatio;
     camera.updateProjectionMatrix();
+    
+    // Adjust camera distance to maintain cube proportions
+    if (aspectRatio > 1) {
+        // Landscape - move camera closer to see full cube width
+        camera.position.z = 2.8;
+    } else {
+        // Portrait - normal distance
+        camera.position.z = isMobile ? 3.2 : 3;
+    }
     
     // Update renderer size
     renderer.setSize(window.innerWidth, window.innerHeight);
