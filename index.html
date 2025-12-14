@@ -32,7 +32,7 @@
 let scene, camera, renderer, sphere, uniforms;
 let mouse = new THREE.Vector3();
 let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-let particleCount, pointSize;
+let particleCount, pointSize, spreadMultiplier;
 
 init();
 animate();
@@ -43,7 +43,7 @@ function init() {
     // Adjust for mobile aspect ratio
     const aspectRatio = window.innerWidth / window.innerHeight;
     camera = new THREE.PerspectiveCamera(60, aspectRatio, 0.1, 1000);
-    camera.position.z = isMobile ? 3.5 : 3; // Slightly further on mobile
+    camera.position.z = isMobile ? 3.0 : 3; // Closer for wider view
 
     renderer = new THREE.WebGLRenderer({ 
         antialias: true,
@@ -58,15 +58,19 @@ function init() {
 
     // Adjust particle count and size for mobile
     particleCount = isMobile ? 15000 : 50000;
-    pointSize = isMobile ? 2.0 : 1.0; // Larger on mobile for better visibility
+    pointSize = isMobile ? 2.0 : 1.0;
+    
+    // WIDER SPREAD - increased from 2 to 3 for left-right spread
+    spreadMultiplier = isMobile ? 3.0 : 2.5; // Mobile gets even wider spread
 
     const positions = new Float32Array(particleCount * 3);
 
-    // Create particles in a cube shape (same as original)
+    // Create particles in a WIDER cube shape
     for (let i = 0; i < particleCount; i++) {
-        positions[i*3] = (Math.random() - 0.5) * 2;
-        positions[i*3+1] = (Math.random() - 0.5) * 2;
-        positions[i*3+2] = (Math.random() - 0.5) * 2;
+        // WIDER horizontal spread (X-axis), normal vertical (Y), normal depth (Z)
+        positions[i*3] = (Math.random() - 0.5) * spreadMultiplier;     // X: wider
+        positions[i*3+1] = (Math.random() - 0.5) * (spreadMultiplier * 0.7);  // Y: slightly less wide
+        positions[i*3+2] = (Math.random() - 0.5) * (spreadMultiplier * 0.8);  // Z: slightly less wide
     }
 
     const particleGeometry = new THREE.BufferGeometry();
@@ -89,7 +93,8 @@ function init() {
 
                 float dist = distance(pos, uMouse);
                 if (dist > 0.01) { // Avoid division by zero
-                    pos += normalize(pos - uMouse) * (0.15 / dist);
+                    // Reduced interaction strength for wider spread
+                    pos += normalize(pos - uMouse) * (0.12 / dist);
                 }
 
                 gl_PointSize = uPointSize;
@@ -121,8 +126,8 @@ function init() {
         const normalizedX = (x / window.innerWidth) * 2 - 1;
         const normalizedY = -(y / window.innerHeight) * 2 + 1;
         
-        // Adjust Z position for better interaction
-        mouse.set(normalizedX, normalizedY, 0.3);
+        // Adjust for wider spread - mouse position matches particle spread
+        mouse.set(normalizedX * (spreadMultiplier/2), normalizedY * (spreadMultiplier/2 * 0.7), 0.3);
         uniforms.uMouse.value.copy(mouse);
     }
 
@@ -148,7 +153,6 @@ function init() {
 
     // Handle window resize
     window.addEventListener('resize', onWindowResize);
-    // Also handle orientation change
     window.addEventListener('orientationchange', onWindowResize);
 }
 
