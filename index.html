@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Particles – Mobile Optimized</title>
+  <title>Particles – Pinch Zoom</title>
   <style>
     body { 
       margin: 0; 
@@ -21,9 +21,20 @@
       width: 100%;
       height: 100%;
     }
+    #zoomInfo {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      opacity: 0.7;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+<div id="zoomInfo">Pinch to zoom</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
@@ -34,6 +45,14 @@ let mouse = new THREE.Vector3();
 let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 let particleCount, pointSize;
 
+// Zoom variables
+let cameraDistance = 3.0;
+let minZoom = 1.5;
+let maxZoom = 6.0;
+let initialPinchDistance = 0;
+let isPinching = false;
+let zoomInfo;
+
 init();
 animate();
 
@@ -43,15 +62,7 @@ function init() {
     // Adjust camera for mobile aspect ratios
     const aspectRatio = window.innerWidth / window.innerHeight;
     camera = new THREE.PerspectiveCamera(60, aspectRatio, 0.1, 1000);
-    
-    // Adjust camera distance based on aspect ratio to keep cube shape
-    if (aspectRatio > 1) {
-        // Landscape - move camera closer to see full width
-        camera.position.z = 2.8;
-    } else {
-        // Portrait - normal distance
-        camera.position.z = isMobile ? 3.2 : 3;
-    }
+    camera.position.z = cameraDistance;
 
     renderer = new THREE.WebGLRenderer({ 
         antialias: true,
@@ -64,14 +75,15 @@ function init() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 2 : 3));
     document.body.appendChild(renderer.domElement);
 
+    zoomInfo = document.getElementById('zoomInfo');
+
     // Adjust particle count and size for mobile
     particleCount = isMobile ? 15000 : 50000;
-    pointSize = isMobile ? 2.5 : 1.0; // Larger on mobile for visibility
+    pointSize = isMobile ? 2.5 : 1.0;
 
     const positions = new Float32Array(particleCount * 3);
 
     // Create particles in a PERFECT CUBE shape
-    // Using the original spread of 2 units to maintain cube proportions
     const cubeSize = 2.0; // Fixed cube size for perfect shape
     
     for (let i = 0; i < particleCount; i++) {
@@ -138,31 +150,93 @@ function init() {
         uniforms.uMouse.value.copy(mouse);
     }
 
-    // Mouse events
+    // Mouse wheel zoom for desktop
+    window.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const zoomSpeed = 0.001;
+        cameraDistance += e.deltaY * zoomSpeed;
+        cameraDistance = Math.max(minZoom, Math.min(maxZoom, cameraDistance));
+        camera.position.z = cameraDistance;
+        updateZoomInfo();
+    }, { passive: false });
+
+    // Touch events for mobile
+    let touches = [];
+    
+    function handleTouchStart(e) {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        
+        if (touches.length === 2) {
+            // Start pinch zoom
+            isPinching = true;
+            initialPinchDistance = getPinchDistance(touches[0], touches[1]);
+            zoomInfo.textContent = "Pinching...";
+        } else if (touches.length === 1) {
+            // Single touch for particle interaction
+            updatePointerPosition(touches[0].clientX, touches[0].clientY);
+        }
+    }
+    
+    function handleTouchMove(e) {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        
+        if (touches.length === 2 && isPinching) {
+            // Pinch zoom in progress
+            const currentDistance = getPinchDistance(touches[0], touches[1]);
+            const zoomFactor = initialPinchDistance / currentDistance;
+            
+            // Adjust camera distance based on pinch
+            cameraDistance *= zoomFactor;
+            cameraDistance = Math.max(minZoom, Math.min(maxZoom, cameraDistance));
+            camera.position.z = cameraDistance;
+            
+            initialPinchDistance = currentDistance;
+            updateZoomInfo();
+        } else if (touches.length === 1) {
+            // Single touch for particle interaction
+            updatePointerPosition(touches[0].clientX, touches[0].clientY);
+        }
+    }
+    
+    function handleTouchEnd(e) {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        
+        if (touches.length < 2) {
+            isPinching = false;
+            zoomInfo.textContent = "Pinch to zoom";
+        }
+    }
+    
+    function getPinchDistance(touch1, touch2) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    // Add touch event listeners
+    window.addEventListener("touchstart", handleTouchStart, { passive: false });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd, { passive: false });
+    window.addEventListener("touchcancel", handleTouchEnd, { passive: false });
+
+    // Mouse move for desktop
     window.addEventListener("mousemove", (e) => {
         updatePointerPosition(e.clientX, e.clientY);
     });
 
-    // Touch events for mobile
-    window.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updatePointerPosition(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: false });
-
-    window.addEventListener("touchmove", (e) => {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updatePointerPosition(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: false });
-
-    // Handle window resize - MAINTAIN CUBE PROPORTIONS
+    // Handle window resize
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('orientationchange', function() {
-        setTimeout(onWindowResize, 100); // Wait for orientation to complete
+        setTimeout(onWindowResize, 100);
     });
+}
+
+function updateZoomInfo() {
+    const zoomPercent = Math.round(((cameraDistance - minZoom) / (maxZoom - minZoom)) * 100);
+    zoomInfo.textContent = `Zoom: ${zoomPercent}%`;
 }
 
 function onWindowResize() {
@@ -170,15 +244,6 @@ function onWindowResize() {
     const aspectRatio = window.innerWidth / window.innerHeight;
     camera.aspect = aspectRatio;
     camera.updateProjectionMatrix();
-    
-    // Adjust camera distance to maintain cube proportions
-    if (aspectRatio > 1) {
-        // Landscape - move camera closer to see full cube width
-        camera.position.z = 2.8;
-    } else {
-        // Portrait - normal distance
-        camera.position.z = isMobile ? 3.2 : 3;
-    }
     
     // Update renderer size
     renderer.setSize(window.innerWidth, window.innerHeight);
